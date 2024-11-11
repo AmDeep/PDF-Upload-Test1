@@ -2,12 +2,18 @@ import streamlit as st
 import PyPDF2
 import nltk
 import spacy
+from spacy.cli import download
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
-# Load NLP models
-nltk.download('punkt')
-nlp = spacy.load('en_core_web_sm')
+# Download the spaCy model if not already available
+try:
+    nlp = spacy.load('en_core_web_sm')
+except OSError:
+    download('en_core_web_sm')
+    nlp = spacy.load('en_core_web_sm')
+
+# Initialize the SentenceTransformer model
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Helper function to extract text from PDF
