@@ -1,10 +1,12 @@
 import streamlit as st
 from PyPDF2 import PdfReader
-from sumy.parsers.plaintext import PlaintextParser
-from sumy.summarizers.lsa import LsaSummarizer
-from sumy.summarizers.text_rank import TextRankSummarizer
-import nltk
-nltk.download('punkt')
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
+# Load spaCy model
+nlp = spacy.load("en_core_web_sm")
 
 def extract_text_from_pdf(pdf_file):
     """Extract text from a PDF file."""
@@ -14,23 +16,28 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text()
     return text
 
-def generate_summary(text, summarizer_type="TextRank"):
-    """Generate a summary using the chosen summarizer."""
-    parser = PlaintextParser.from_string(text, PlaintextParser.from_string(text).tokenizer)
+def summarize_text(text, num_sentences=3):
+    """Summarize text using TextRank or TF-IDF method."""
+    doc = nlp(text)
+    sentences = [sent.text.strip() for sent in doc.sents]
 
-    # Choose the summarizer: TextRank or LSA
-    if summarizer_type == "TextRank":
-        summarizer = TextRankSummarizer()
-    elif summarizer_type == "LSA":
-        summarizer = LsaSummarizer()
-    else:
-        summarizer = TextRankSummarizer()
+    # If the document is short, just return the sentences as is
+    if len(sentences) <= num_sentences:
+        return " ".join(sentences)
 
-    summary = summarizer(parser.document, 3)  # Summarize to 3 sentences
-    return ' '.join([str(sentence) for sentence in summary])
+    # Use TF-IDF to compute sentence similarity
+    vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(sentences)
+    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+
+    # Rank sentences based on their similarity to the others
+    sentence_scores = np.sum(cosine_sim, axis=1)
+    ranked_sentences = [sentences[i] for i in sentence_scores.argsort()[-num_sentences:][::-1]]
+
+    return " ".join(ranked_sentences)
 
 def main():
-    st.title("PDF Summary Generator (Traditional NLP)")
+    st.title("PDF Summary Generator (TextRank + TF-IDF)")
 
     st.write("Upload a PDF document to get a summary of its content.")
 
@@ -45,9 +52,9 @@ def main():
             st.subheader("Extracted Text")
             st.write(text[:1000])  # Display the first 1000 characters
 
-            # Summarize using TextRank or LSA
-            st.subheader("Generated Summary (TextRank or LSA)")
-            summary = generate_summary(text, summarizer_type="TextRank")  # or use "LSA"
+            # Generate the summary using TF-IDF / TextRank
+            st.subheader("Generated Summary")
+            summary = summarize_text(text)
             st.write(summary)
         else:
             st.warning("No text could be extracted from this PDF.")
