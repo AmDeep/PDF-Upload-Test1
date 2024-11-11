@@ -1,8 +1,13 @@
 import streamlit as st
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification, AutoModelForTokenClassification
 import PyPDF2
-from sentence_transformers import SentenceTransformer
-import faiss
-import numpy as np
+import re
+
+# Load Hugging Face models
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+ner_model = AutoModelForTokenClassification.from_pretrained("dbmdz/bert-large-cased-finetuned-conll03-english")
+ner_tokenizer = AutoTokenizer.from_pretrained("dbmdz/bert-large-cased-finetuned-conll03-english")
+ner_pipeline = pipeline("ner", model=ner_model, tokenizer=ner_tokenizer)
 
 # Function to extract text from PDF
 def extract_text_from_pdf(pdf_file):
@@ -12,53 +17,59 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text()
     return text
 
-# Function to generate vector embeddings for content
-def generate_embeddings(text, model):
-    sentences = text.split('.')
-    embeddings = model.encode(sentences, convert_to_tensor=True)
-    return embeddings, sentences
+# Function to get a summary of the PDF content using Hugging Face BART model
+def get_summary(text):
+    try:
+        summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
+        return summary[0]['summary_text']
+    except Exception as e:
+        return f"Error generating summary: {str(e)}"
 
-# Function to search for 'eligibility' related sentences
-def search_eligibility_sentences(sentences, embeddings, query, faiss_index):
-    query_embedding = model.encode([query], convert_to_tensor=True)
-    D, I = faiss_index.search(query_embedding.cpu().numpy(), k=5)
-    results = []
-    for idx in I[0]:
-        results.append((sentences[idx], D[0][idx]))
-    return results
+# Function to extract eligibility-related information using Named Entity Recognition (NER)
+def get_eligibility_info(text):
+    # Extract entities related to eligibility (we'll look for the word 'eligibility' and nearby entities)
+    entities = ner_pipeline(text)
+    eligibility_info = []
+    
+    # Search for eligibility-related terms
+    for entity in entities:
+        if 'eligibility' in entity['word'].lower():
+            eligibility_info.append(entity)
+    
+    # If no eligibility-related entities found, look for keywords
+    if not eligibility_info:
+        eligibility_info = [entity for entity in entities if re.search(r'\b(eligibility|eligible|eligibility criteria|eligible)\b', entity['word'], re.I)]
+    
+    # Return the filtered results
+    return eligibility_info if eligibility_info else "No specific eligibility information found."
 
-# Streamlit UI
-st.title("PDF Document Processing with Vector Embedding")
-st.write("Upload a PDF document to generate vector embeddings and analyze content related to 'eligibility'.")
+# Streamlit app UI
+st.title("PDF Document Summary and Eligibility Extractor")
+st.write("Upload a PDF document and generate a summary along with information related to 'eligibility'.")
 
 uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
 
 if uploaded_file is not None:
-    # Extract the content from the uploaded PDF
     with st.spinner("Extracting text from the PDF..."):
         pdf_text = extract_text_from_pdf(uploaded_file)
 
-    # Display the extracted text (first 500 characters as a preview)
+    # Display a preview of the extracted text (first 500 characters)
     st.write("Extracted text preview:")
     st.write(pdf_text[:500])
 
-    # Use a pre-trained SentenceTransformer model
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    embeddings, sentences = generate_embeddings(pdf_text, model)
+    # If the document is too long, chunk it (optional, but recommended)
+    if len(pdf_text.split()) > 1000:
+        st.write("Document is large. It may be split into smaller parts for processing.")
 
-    # Create a FAISS index for fast similarity search
-    faiss_index = faiss.IndexFlatL2(embeddings.shape[1])
-    faiss_index.add(np.array(embeddings.cpu().numpy(), dtype=np.float32))
+    # Display buttons for generating summary and eligibility information
+    if st.button("Generate Summary"):
+        with st.spinner("Generating summary..."):
+            summary = get_summary(pdf_text)
+            st.write("Summary:")
+            st.write(summary)
 
-    # Submit button
-    if st.button('Submit and Generate Results'):
-        # Search for content related to the word 'eligibility'
-        eligibility_results = search_eligibility_sentences(sentences, embeddings, 'eligibility', faiss_index)
-
-        # Display the top results
-        if eligibility_results:
-            st.write(f"Top results related to 'eligibility':")
-            for sentence, score in eligibility_results:
-                st.write(f"Score: {score:.4f} - {sentence}")
-        else:
-            st.write("No content related to 'eligibility' was found.")
+    if st.button("Extract Eligibility Information"):
+        with st.spinner("Extracting eligibility information..."):
+            eligibility_info = get_eligibility_info(pdf_text)
+            st.write("Eligibility Information:")
+            st.write(eligibility_info)
