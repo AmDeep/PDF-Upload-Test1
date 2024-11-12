@@ -1,8 +1,2 @@
 streamlit==1.22.0
 PyMuPDF
-nltk==3.8.1
-gensim==4.3.1
-pyLDAvis
-wordcloud
-matplotlib==3.7.1
-spacy==3.5.0
