@@ -1,5 +1,5 @@
 streamlit==1.22.0
-PyMuPDF==1.21.3
+PyMuPDF
 nltk==3.8.1
 gensim==4.3.1
 pyLDAvis==3.4.0
