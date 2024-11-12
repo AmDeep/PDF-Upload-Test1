@@ -3,6 +3,6 @@ PyMuPDF
 nltk==3.8.1
 gensim==4.3.1
 pyLDAvis
-wordcloud==1.9.1
+wordcloud
 matplotlib==3.7.1
 spacy==3.5.0
