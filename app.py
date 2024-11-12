@@ -1,63 +1,127 @@
 import streamlit as st
-from PyPDF2 import PdfReader
+import fitz  # PyMuPDF for PDF extraction
+import nltk
+import gensim
+import pyLDAvis.gensim_models
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
+from collections import Counter
 import spacy
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import re
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize, sent_tokenize
+from gensim import corpora
+from nltk.probability import FreqDist
+import io
 
-# Load spaCy model
+# Ensure necessary NLTK resources are downloaded
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# Load SpaCy model for NLP tasks
 nlp = spacy.load("en_core_web_sm")
 
+# Function to extract text from PDF
 def extract_text_from_pdf(pdf_file):
-    """Extract text from a PDF file."""
-    pdf_reader = PdfReader(pdf_file)
+    doc = fitz.open(io.BytesIO(pdf_file.read()))  # Read PDF from stream
     text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
+    for page in doc:
+        text += page.get_text("text")
     return text
 
-def summarize_text(text, num_sentences=3):
-    """Summarize text using TextRank or TF-IDF method."""
-    doc = nlp(text)
-    sentences = [sent.text.strip() for sent in doc.sents]
+# Function to clean and preprocess the text
+def preprocess_text(text):
+    text = text.lower()
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'[^\w\s]', '', text)
+    
+    # Tokenize text
+    tokens = word_tokenize(text)
+    
+    # Remove stopwords
+    stop_words = set(stopwords.words('english'))
+    tokens = [word for word in tokens if word not in stop_words]
+    
+    return tokens
 
-    # If the document is short, just return the sentences as is
-    if len(sentences) <= num_sentences:
-        return " ".join(sentences)
+# Function to plot word frequency
+def plot_word_frequency(tokens):
+    fdist = FreqDist(tokens)
+    common_words = fdist.most_common(20)
+    words, counts = zip(*common_words)
+    
+    fig, ax = plt.subplots(figsize=(10,6))
+    ax.bar(words, counts)
+    ax.set_xticklabels(words, rotation=45, ha='right')
+    ax.set_title("Top 20 Words in Document")
+    st.pyplot(fig)
 
-    # Use TF-IDF to compute sentence similarity
-    vectorizer = TfidfVectorizer(stop_words='english')
-    tfidf_matrix = vectorizer.fit_transform(sentences)
-    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+# Function to create a word cloud
+def create_word_cloud(tokens):
+    wordcloud = WordCloud(width=800, height=400, background_color="white").generate(' '.join(tokens))
+    fig, ax = plt.subplots(figsize=(10,6))
+    ax.imshow(wordcloud, interpolation="bilinear")
+    ax.axis("off")
+    ax.set_title("Word Cloud of Document")
+    st.pyplot(fig)
 
-    # Rank sentences based on their similarity to the others
-    sentence_scores = np.sum(cosine_sim, axis=1)
-    ranked_sentences = [sentences[i] for i in sentence_scores.argsort()[-num_sentences:][::-1]]
+# Function to perform topic modeling using LDA
+def perform_topic_modeling(text, num_topics=3):
+    tokens = preprocess_text(text)
+    dictionary = corpora.Dictionary([tokens])
+    corpus = [dictionary.doc2bow(tokens)]
+    
+    lda_model = gensim.models.LdaMulticore(corpus, num_topics=num_topics, id2word=dictionary, passes=10)
+    topics = lda_model.print_topics(num_words=5)
+    
+    st.subheader("Topic Modeling Results:")
+    for topic in topics:
+        st.write(topic)
 
-    return " ".join(ranked_sentences)
+    # Visualize the topics
+    pyLDAvis.enable_notebook()
+    vis = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary)
+    st.write(vis)
 
-def main():
-    st.title("PDF Summary Generator (TextRank + TF-IDF)")
+# Function to find sentences related to the word 'eligibility'
+def extract_eligibility_info(text):
+    sentences = sent_tokenize(text)
+    eligibility_sentences = [sentence for sentence in sentences if 'eligibility' in sentence.lower()]
+    return " ".join(eligibility_sentences)
 
-    st.write("Upload a PDF document to get a summary of its content.")
+# Streamlit UI
+st.title('PDF Document Analysis')
+st.markdown('Upload a PDF to analyze word frequency, topics, and eligibility-related information.')
 
-    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
-    if uploaded_file is not None:
-        # Extract text from the uploaded PDF
-        with st.spinner("Extracting text from PDF..."):
-            text = extract_text_from_pdf(uploaded_file)
-        
-        if text:
-            st.subheader("Extracted Text")
-            st.write(text[:1000])  # Display the first 1000 characters
-
-            # Generate the summary using TF-IDF / TextRank
-            st.subheader("Generated Summary")
-            summary = summarize_text(text)
-            st.write(summary)
-        else:
-            st.warning("No text could be extracted from this PDF.")
-
-if __name__ == "__main__":
-    main()
+if uploaded_file is not None:
+    # Extract text from PDF
+    text = extract_text_from_pdf(uploaded_file)
+    
+    # Display the raw text (optional)
+    if st.checkbox("Show raw text"):
+        st.text_area("Raw text", text, height=300)
+    
+    # Preprocess and analyze text
+    tokens = preprocess_text(text)
+    
+    # Plot word frequency
+    st.subheader("Word Frequency")
+    plot_word_frequency(tokens)
+    
+    # Create a word cloud
+    st.subheader("Word Cloud")
+    create_word_cloud(tokens)
+    
+    # Perform topic modeling
+    st.subheader("Topic Modeling")
+    perform_topic_modeling(text)
+    
+    # Extract eligibility-related information
+    st.subheader("Eligibility Information")
+    eligibility_info = extract_eligibility_info(text)
+    if eligibility_info:
+        st.write(eligibility_info)
+    else:
+        st.write("No information found regarding 'eligibility'.")
