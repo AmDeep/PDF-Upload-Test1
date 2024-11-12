@@ -1,12 +1,11 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import re
-import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import math
 
 # 1. Data Cleaning
 def clean_text(text):
@@ -49,36 +48,52 @@ def summarize_eligibility_references(text):
     summary = " ".join(eligibility_sentences)
     return summary
 
-# 6. Text Summarization (TextRank-like algorithm)
+# 6. Text Summarization (TextRank-like algorithm) - Without numpy
 def summarize_text(text, top_n=5):
     # Split the text into sentences
     sentences = text.split('.')
-    
-    # Remove any extra spaces
     sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
-    
-    # Calculate the similarity matrix between sentences
+
+    # TF-IDF Vectorization
     tfidf_vectorizer = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf_vectorizer.fit_transform(sentences)
-    cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-    
+    feature_names = tfidf_vectorizer.get_feature_names_out()
+
+    # Cosine Similarity Calculation (manual, no numpy)
+    cosine_sim = cosine_similarity_manual(tfidf_matrix)
+
     # Build the graph based on sentence similarity
     graph = nx.Graph()
     for i in range(len(sentences)):
         for j in range(i + 1, len(sentences)):
-            if cosine_sim[i, j] > 0.2:  # Threshold for considering a connection
-                graph.add_edge(i, j, weight=cosine_sim[i, j])
-    
+            if cosine_sim[i][j] > 0.2:  # Threshold for considering a connection
+                graph.add_edge(i, j, weight=cosine_sim[i][j])
+
     # Rank the sentences using the graph (PageRank)
     scores = nx.pagerank(graph)
-    
+
     # Get the top N ranked sentences
     ranked_sentences = sorted(((score, i) for i, score in scores.items()), reverse=True)
     top_sentences = [sentences[i] for _, i in ranked_sentences[:top_n]]
     
     return ' '.join(top_sentences)
 
-# 7. Generate Word Embedding Plot
+def cosine_similarity_manual(tfidf_matrix):
+    # Manually compute cosine similarity between sentences
+    num_sentences = tfidf_matrix.shape[0]
+    cosine_sim = [[0 for _ in range(num_sentences)] for _ in range(num_sentences)]
+
+    for i in range(num_sentences):
+        for j in range(i, num_sentences):
+            dot_product = sum(tfidf_matrix[i, k] * tfidf_matrix[j, k] for k in range(tfidf_matrix.shape[1]))
+            norm_i = math.sqrt(sum(tfidf_matrix[i, k]**2 for k in range(tfidf_matrix.shape[1])))
+            norm_j = math.sqrt(sum(tfidf_matrix[j, k]**2 for k in range(tfidf_matrix.shape[1])))
+            cosine_sim[i][j] = dot_product / (norm_i * norm_j) if norm_i > 0 and norm_j > 0 else 0
+            cosine_sim[j][i] = cosine_sim[i][j]  # Symmetric
+
+    return cosine_sim
+
+# 7. Generate Word Embedding Plot - Without numpy
 def plot_word_embeddings(text):
     # Tokenize the text
     tokens = tokenize(text)
@@ -91,16 +106,16 @@ def plot_word_embeddings(text):
     tfidf_vectorizer = TfidfVectorizer()
     tfidf_matrix = tfidf_vectorizer.fit_transform(filtered_tokens)
     
-    # Compute cosine similarity between each pair of words
-    cosine_sim_matrix = cosine_similarity(tfidf_matrix)
+    # Compute cosine similarity between each pair of words (manual calculation)
+    cosine_sim_matrix = cosine_similarity_manual(tfidf_matrix)
     
     # Build the graph for word connections
     G = nx.Graph()
     words = tfidf_vectorizer.get_feature_names_out()
     for i in range(len(words)):
         for j in range(i + 1, len(words)):
-            if cosine_sim_matrix[i, j] > 0.5:  # Threshold for visualizing strong relationships
-                G.add_edge(words[i], words[j], weight=cosine_sim_matrix[i, j])
+            if cosine_sim_matrix[i][j] > 0.5:  # Threshold for visualizing strong relationships
+                G.add_edge(words[i], words[j], weight=cosine_sim_matrix[i][j])
     
     # Plot the graph
     plt.figure(figsize=(10, 10))
