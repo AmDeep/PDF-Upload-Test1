@@ -1,5 +1,8 @@
 streamlit==1.22.0
-PyPDF2==2.11.1
+PyMuPDF==1.21.3
+nltk==3.8.1
+gensim==4.3.1
+pyLDAvis==3.4.0
+wordcloud==1.9.1
+matplotlib==3.7.1
 spacy==3.5.0
-sklearn==1.2.2
-nltk==3.6.3
