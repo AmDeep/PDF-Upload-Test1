@@ -1,7 +1,6 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import re
-import pandas as pd
 from io import StringIO
 
 # 1. Data Cleaning
@@ -18,12 +17,11 @@ def clean_text(text):
 def tokenize(text):
     return text.split()
 
-# 3. Extract Text and Tables from PDF
-def extract_text_and_tables_from_pdf(pdf_file):
+# 3. Extract Text from PDF
+def extract_text_from_pdf(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     page_info = {}
-    tables = []
 
     # Iterate through each page
     for page_num in range(pdf_document.page_count):
@@ -33,17 +31,12 @@ def extract_text_and_tables_from_pdf(pdf_file):
         page_text = page.get_text("text")  # Standard text extraction
         text += page_text
 
-        # Try to extract tables from the page using layout analysis (this works well for tables)
-        page_tables = page.get_text("table")  # This returns tables as structured text
-        if page_tables:
-            tables.append(page_tables)
-        
         # Record page number for each sentence
         sentences = page_text.split('.')
         for sentence in sentences:
             page_info[sentence.strip()] = page_num  # Store the page number for each sentence
     
-    return text, page_info, tables
+    return text, page_info
 
 # 4. Summarize Mentions of the User-Input Term
 def summarize_mentions(text, term, page_info):
@@ -56,7 +49,9 @@ def summarize_mentions(text, term, page_info):
         sentence = sentence.strip()
         if term in sentence:
             page_num = page_info.get(sentence, "Unknown page")
-            summary_data.append(f"Page {page_num}: {sentence}")
+            # Bold and underline the term for better visibility
+            highlighted_sentence = sentence.replace(term, f"**_{term}_**")
+            summary_data.append(f"Page {page_num}: {highlighted_sentence}")
     
     # Return a concise summary of mentions, including single word mentions
     if summary_data:
@@ -147,8 +142,8 @@ uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 if uploaded_file is not None:
     st.write(f"File: {uploaded_file.name}")
     
-    # Extract text and tables from the uploaded PDF
-    extracted_text, page_info, tables = extract_text_and_tables_from_pdf(uploaded_file)
+    # Extract text from the uploaded PDF
+    extracted_text, page_info = extract_text_from_pdf(uploaded_file)
 
     # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
@@ -172,7 +167,9 @@ if uploaded_file is not None:
     st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
     if context_data:
         for entry in context_data:
-            st.write(f"Page {entry['page_number']}: {entry['sentence']}")
+            # Underline and bold the term in the sentence
+            highlighted_sentence = entry['sentence'].replace(custom_term, f"**_{custom_term}_**")
+            st.write(f"Page {entry['page_number']}: {highlighted_sentence}")
             st.write(f"Related Terms: {', '.join(entry['related_terms']) if entry['related_terms'] else 'none'}")
     else:
         st.write(f"No contextual mentions of '{custom_term}' found.")
@@ -186,10 +183,3 @@ if uploaded_file is not None:
     st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}'")
     pages_with_term = display_pages_with_term(page_info, custom_term)
     st.write(pages_with_term)
-    
-    # Show extracted tables (if any)
-    if tables:
-        st.subheader("Extracted Tables")
-        for idx, table in enumerate(tables):
-            st.write(f"Table {idx + 1}:")
-            st.write(table)
