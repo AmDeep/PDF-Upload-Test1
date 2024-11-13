@@ -1,6 +1,7 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import re
+from collections import Counter
 from io import StringIO
 
 # 1. Data Cleaning
@@ -117,7 +118,7 @@ def extract_contextual_relationships(text, term, page_info):
     
     return context_data
 
-# 7. Display Pages with Mentions of Term and Surrounding Text
+# 7. Display Pages with Term and Surrounding Context
 def display_pages_with_term(page_info, term, extracted_text, context_window=30):
     term = term.lower()
     pages_found = set()
@@ -152,6 +153,45 @@ def display_pages_with_term(page_info, term, extracted_text, context_window=30):
     else:
         return f"No mentions of '{term}' found in the document."
 
+# 8. Print Full Lines with the Term
+def print_full_lines_with_term(extracted_text, term, page_info):
+    term = term.lower()
+    full_lines_with_term = []
+    
+    # Split the text into lines based on new lines
+    lines = extracted_text.split('\n')
+    for line in lines:
+        if term in line.lower():
+            page_num = page_info.get(line.strip(), "Unknown page")
+            full_line = line.replace(term, f"**_{term}_**")
+            full_lines_with_term.append(f"Page {page_num + 1}: {full_line}")
+    
+    return "\n".join(full_lines_with_term)
+
+# 9. Identify Related Terms
+def identify_related_terms(text, term, context_window=30):
+    """
+    Identify terms that appear frequently near the user-input term.
+    """
+    term = term.lower()
+    words_near_term = []
+    
+    sentences = text.split('.')
+    
+    for sentence in sentences:
+        if term in sentence.lower():
+            # Get the surrounding words for context
+            words = sentence.split()
+            for word in words:
+                if word != term:
+                    words_near_term.append(word.lower())
+    
+    # Find the most common words near the term
+    word_counts = Counter(words_near_term)
+    related_terms = [word for word, count in word_counts.most_common(10)]  # Top 10 related terms
+    
+    return related_terms
+
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Contextual Analysis")
 st.write("Upload a PDF file to extract its text, clean it, and analyze content based on a custom term.")
@@ -179,27 +219,25 @@ if uploaded_file is not None:
     for question in dynamic_questions:
         if st.button(question):
             # Generate and display a response to the clicked question
-            response = generate_response_to_question(extracted_text, question, custom_term, page_info)
+            response = generate_dynamic_questions(cleaned_text, custom_term, page_info)
             st.write(f"Response: {response}")
 
-    # Extract and display all contextual mentions of the custom term in the document
-    context_data = extract_contextual_relationships(extracted_text, custom_term, page_info)
-    st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
-    if context_data:
-        for entry in context_data:
-            # Underline and bold the term in the sentence
-            highlighted_sentence = entry['sentence'].replace(custom_term, f"**_{custom_term}_**")
-            st.write(f"Page {entry['page_number']}: {highlighted_sentence}")
-            st.write(f"Related Terms: {', '.join(entry['related_terms']) if entry['related_terms'] else 'none'}")
-    else:
-        st.write(f"No contextual mentions of '{custom_term}' found.")
-    
     # Generate and display a summary of mentions for the custom term
     st.subheader(f"Summary of Mentions of '{custom_term.capitalize()}'")
     summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
 
-    # Show list of pages where the term is found with context
-    st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}' and Surrounding Context")
-    pages_with_term = display_pages_with_term(page_info, custom_term, extracted_text)
-    st.write(pages_with_term)
+    # Generate and display a list of pages with mentions of the term and the context around it
+    st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}'")
+    page_mentions = display_pages_with_term(page_info, custom_term, extracted_text)
+    st.write(page_mentions)
+
+    # Display full lines containing the term
+    st.subheader(f"Full Lines Containing '{custom_term.capitalize()}'")
+    full_lines = print_full_lines_with_term(extracted_text, custom_term, page_info)
+    st.write(full_lines)
+
+    # Display related terms
+    st.subheader(f"Related Terms to '{custom_term.capitalize()}'")
+    related_terms = identify_related_terms(extracted_text, custom_term)
+    st.write(", ".join(related_terms))
