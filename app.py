@@ -112,8 +112,8 @@ def extract_contextual_relationships(text, term, page_info):
     
     # If no context found, look for single word occurrences
     if not context_data:
-        for page_num, page_text in page_info.items():
-            if term in page_text:
+        for sentence, page_num in page_info.items():
+            if term in sentence:
                 context_data.append({
                     "sentence": term,  # Single term mention
                     "related_terms": [],
