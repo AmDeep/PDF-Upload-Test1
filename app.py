@@ -25,44 +25,42 @@ def vectorize(tokens):
     word_count = Counter(tokens)
     return word_count
 
-# 4. Advanced Text Summarization (using Sentence Importance)
-def advanced_summary(text, top_n=5):
-    # Tokenize and vectorize the text
+# 4. Create Network Graph (text-based) for Related Terms
+def create_network_plot(text, term, top_n=10):
+    # Normalize the text and term to lowercase
+    term = term.lower()
+    text = text.lower()
+    
+    # Tokenize the cleaned text
     tokens = tokenize(text)
-    word_count = vectorize(tokens)
     
-    # Filter out common words (stopwords) from the word count
+    # Identify important terms by frequency (excluding stopwords)
     stopwords = set(["the", "and", "is", "to", "in", "of", "a", "an", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"])
-    filtered_count = {word: count for word, count in word_count.items() if word not in stopwords}
+    filtered_tokens = [word for word in tokens if word not in stopwords]
     
-    # Split the text into sentences
-    sentences = text.split('.')
+    # Build a frequency count of the filtered tokens
+    word_count = Counter(filtered_tokens)
     
-    # Calculate sentence importance based on keyword frequency, sentence length, and position in the document
-    sentence_scores = []
-    for i, sentence in enumerate(sentences):
-        # Calculate keyword frequency in the sentence
-        score = sum(filtered_count.get(word, 0) for word in sentence.split())
-        # Adjust score based on sentence length and position
-        length_score = len(sentence.split()) / 10  # Longer sentences get higher score
-        position_score = (len(sentences) - i) / len(sentences)  # Prioritize sentences towards the end
-        sentence_scores.append((score + length_score + position_score, sentence))
+    # Extract terms that co-occur with the user-input term in the text
+    co_occurring_terms = [word for word in word_count if term in word]
     
-    # Sort sentences by their importance score in descending order and return top N sentences
-    sentence_scores = sorted(sentence_scores, key=lambda x: x[0], reverse=True)
-    summary_sentences = [sentence for score, sentence in sentence_scores[:top_n]]
+    # Generate a simple textual network plot representation
+    network_data = {}
+    network_data[term] = []
     
-    return ' '.join(summary_sentences)
-
-# 5. Summarize References to Custom Term (e.g., "eligibility")
-def summarize_term_references(text, term="eligibility"):
-    # Split the text into sentences
-    sentences = text.split('.')
-    # Find sentences that contain the given term
-    term_sentences = [sentence.strip() for sentence in sentences if term.lower() in sentence.lower()]
-    # Join those sentences into a summary
-    summary = " ".join(term_sentences)
-    return summary
+    for word, count in word_count.items():
+        if word != term and word in co_occurring_terms:
+            network_data[term].append((word, count))
+    
+    # Create and display the textual representation of the network
+    network_plot_text = f"Network of Terms Related to '{term.capitalize()}':\n"
+    if not network_data[term]:
+        network_plot_text += f"No related terms found for '{term}' in the document.\n"
+    else:
+        for related_term, count in network_data[term]:
+            network_plot_text += f"- {related_term} (Frequency: {count})\n"
+    
+    return network_plot_text
 
 # Function to extract text from PDF
 def extract_text_from_pdf(pdf_file):
@@ -174,14 +172,8 @@ if uploaded_file is not None:
     # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
 
-    # Generate an advanced summary
-    advanced_summary_text = advanced_summary(cleaned_text)
-
     # Input for custom term (e.g., "eligibility")
     custom_term = st.text_input("Enter a term to summarize references (e.g., 'eligibility')", "eligibility")
-
-    # Summarize references to the custom term
-    term_summary = summarize_term_references(extracted_text, term=custom_term)
 
     # Generate dynamic question prompts
     dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term)
@@ -202,7 +194,8 @@ if uploaded_file is not None:
         st.write("\n".join(mentions))
     else:
         st.write(f"No mentions of '{custom_term}' found.")
-
-    # Display advanced summary
-    st.subheader("Advanced Summary of Document")
-    st.write(advanced_summary_text)
+    
+    # Generate and display the network plot text representation
+    st.subheader(f"Network Plot of Terms Related to '{custom_term.capitalize()}'")
+    network_plot_text = create_network_plot(cleaned_text, custom_term)
+    st.text(network_plot_text)
