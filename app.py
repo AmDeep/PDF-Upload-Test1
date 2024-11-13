@@ -86,6 +86,21 @@ def find_all_mentions(text, term="eligibility"):
     
     return mentions
 
+# Function to find similar terms (based on prefix/suffix matching)
+def find_similar_terms(text, term, threshold=0.6):
+    # Check for words that share a common prefix or suffix with the term
+    term_length = len(term)
+    similar_terms = set()
+    
+    # Tokenize the text and compare with the input term
+    tokens = tokenize(text)
+    for token in tokens:
+        # Check if there's a reasonable similarity based on the term length
+        if len(token) >= term_length and (token.startswith(term[:3]) or token.endswith(term[-3:])):
+            similar_terms.add(token)
+    
+    return similar_terms
+
 # Function to generate dynamic question prompts based on the extracted term
 def generate_dynamic_questions(text, term):
     # Normalize the text and term to lowercase
@@ -199,3 +214,11 @@ if uploaded_file is not None:
     st.subheader(f"Network Plot of Terms Related to '{custom_term.capitalize()}'")
     network_plot_text = create_network_plot(cleaned_text, custom_term)
     st.text(network_plot_text)
+
+    # Find similar terms related to the custom term
+    similar_terms = find_similar_terms(cleaned_text, custom_term)
+    st.subheader(f"Similar Terms to '{custom_term.capitalize()}'")
+    if similar_terms:
+        st.write("\n".join(similar_terms))
+    else:
+        st.write(f"No similar terms found for '{custom_term}'.")
