@@ -83,36 +83,69 @@ def find_all_mentions(text, term="eligibility"):
     
     return mentions
 
-# Function to extract key concepts/phrases from text (without spaCy)
-def extract_key_concepts(text):
-    # Use regular expressions to find noun-like phrases
-    noun_like_phrases = re.findall(r'\b(?:[a-zA-Z]+(?: [a-zA-Z]+){1,3})\b', text)
+# Function to generate dynamic question prompts based on the extracted term
+def generate_dynamic_questions(text, term):
+    # Normalize the text and term to lowercase
+    term = term.lower()
+    text = text.lower()
     
-    # Remove common stopwords from the noun-like phrases
-    stopwords = set(["the", "and", "is", "to", "in", "of", "a", "an", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"])
-    filtered_phrases = [phrase for phrase in noun_like_phrases if phrase not in stopwords]
+    # Split the text into sentences
+    sentences = text.split('.')
     
-    # Remove duplicates and sort the phrases for clarity
-    filtered_phrases = list(set(filtered_phrases))
-    filtered_phrases.sort()
+    # Find all sentences that contain the term or its variants
+    relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
     
-    return filtered_phrases
-
-# Function to generate dynamic question prompts based on extracted concepts
-def generate_dynamic_questions(concepts):
+    # Generate up to 5 dynamic questions based on the term's context in the document
     questions = []
     
-    for concept in concepts:
-        questions.append(f"What is mentioned about '{concept}'?")
-        questions.append(f"How is '{concept}' defined?")
-        questions.append(f"Where does the document mention '{concept}'?")
-        questions.append(f"Can you provide examples of '{concept}' from the document?")
+    # Basic question structure
+    questions.append(f"What is mentioned about '{term}' in the document?")
     
-    return questions
+    if relevant_sentences:
+        questions.append(f"What are the key examples or details provided about '{term}'?")
+        questions.append(f"Where is '{term}' discussed in the document?")
+        
+        # Check if there are multiple references to create a comparative question
+        if len(relevant_sentences) > 1:
+            questions.append(f"How are the mentions of '{term}' different across the document?")
+        
+        questions.append(f"How is '{term}' defined or explained?")
+    
+    # Limit the number of questions to 5
+    return questions[:5]
+
+# Function to generate contextual response to a question
+def generate_response_to_question(text, question, term):
+    # Normalize the text and term to lowercase
+    term = term.lower()
+    text = text.lower()
+    
+    # Split the text into sentences
+    sentences = text.split('.')
+    
+    # Find sentences related to the question
+    relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
+    
+    # Generate a response based on the question
+    if "about" in question or "what" in question.lower():
+        return "This document discusses the topic of '{}' in several places. It explains it primarily in terms of [contextual explanation].".format(term)
+    elif "examples" in question.lower():
+        if relevant_sentences:
+            return "One example of '{}' in this document is [example extracted]."
+        else:
+            return "No specific examples were provided in the document regarding '{}'."
+    elif "discussed" in question.lower():
+        return "The topic of '{}' is discussed throughout the document, especially in sections [related sections]."
+    elif "defined" in question.lower():
+        return "'{}' is defined as [definition extracted].".format(term)
+    elif "different" in question.lower() and len(relevant_sentences) > 1:
+        return "Mentions of '{}' vary across the document, with different sections focusing on different aspects of the term.".format(term)
+    else:
+        return "This document contains detailed references to '{}', providing various perspectives.".format(term)
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Analysis")
-st.write("Upload a PDF file to extract its text, clean it, and analyze content based on key terms.")
+st.write("Upload a PDF file to extract its text, clean it, and analyze content based on a custom term.")
 
 # File uploader widget
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
@@ -136,16 +169,16 @@ if uploaded_file is not None:
     # Summarize references to the custom term
     term_summary = summarize_term_references(extracted_text, term=custom_term)
 
-    # Extract key concepts/phrases from the text for dynamic question generation
-    key_concepts = extract_key_concepts(cleaned_text)
-
     # Generate dynamic question prompts
-    dynamic_questions = generate_dynamic_questions(key_concepts)
+    dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term)
 
-    # Display sample question prompts based on the extracted concepts
+    # Display sample question prompts based on the extracted term
     st.subheader("Sample Questions Based on Your Text")
     for question in dynamic_questions:
-        st.button(question)
+        if st.button(question):
+            # Generate and display a response to the clicked question
+            response = generate_response_to_question(extracted_text, question, custom_term)
+            st.write(f"Response: {response}")
 
     # Display all mentions of the custom term in the document
     mentions = find_all_mentions(extracted_text, term=custom_term)
@@ -169,9 +202,3 @@ if uploaded_file is not None:
             st.write(f"{word}: {freq}")
     else:
         st.write("No detailed summary could be generated.")
-
-    st.subheader(f"Summary of References to '{custom_term.capitalize()}'")
-    if term_summary:
-        st.write(term_summary)
-    else:
-        st.write(f"No references to '{custom_term}' found.")
