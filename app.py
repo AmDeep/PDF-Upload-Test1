@@ -22,10 +22,11 @@ def vectorize(tokens):
     return Counter(tokens)
 
 # 4. Extract Contextual Relationships
-def extract_contextual_relationships(text, term):
+def extract_contextual_relationships(text, term, page_info):
     """
     Analyze the contextual relationships between the user input term
-    and other words in the document to generate contextually rich data.
+    and other words in the document to generate contextually rich data, 
+    including the page number and table (if applicable).
     """
     term = term.lower()
     sentences = text.split('.')
@@ -34,6 +35,8 @@ def extract_contextual_relationships(text, term):
     for sentence in sentences:
         sentence = sentence.strip()
         if term in sentence:
+            # Identify which page this sentence is from
+            page_num = page_info.get(sentence, "Unknown page")  # Default to "Unknown page" if no page is found
             words = sentence.split()
             relevant_words = [word for word in words if word not in ["the", "and", "is", "to", "in", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"]]
             
@@ -42,15 +45,16 @@ def extract_contextual_relationships(text, term):
             
             context_data.append({
                 "sentence": sentence,
-                "related_terms": related_terms
+                "related_terms": related_terms,
+                "page_number": page_num
             })
     
     return context_data
 
 # 5. Summarize Mentions of the User-Input Text
-def summarize_mentions(text, term):
+def summarize_mentions(text, term, page_info):
     """
-    Summarize all mentions of the user-input term in relation to the document.
+    Summarize all mentions of the user-input term in relation to the document, including page numbers.
     """
     term = term.lower()
     sentences = text.split('.')
@@ -60,7 +64,8 @@ def summarize_mentions(text, term):
     for sentence in sentences:
         sentence = sentence.strip()
         if term in sentence:
-            summary_data.append(sentence)
+            page_num = page_info.get(sentence, "Unknown page")
+            summary_data.append(f"Page {page_num}: {sentence}")
     
     # Return a concise summary of mentions
     if summary_data:
@@ -69,11 +74,11 @@ def summarize_mentions(text, term):
         return f"No mentions of '{term}' found in the document."
 
 # Function to generate dynamic question prompts based on the extracted term
-def generate_dynamic_questions(text, term):
+def generate_dynamic_questions(text, term, page_info):
     term = term.lower()
     
     # Extract contextual relationships
-    context_data = extract_contextual_relationships(text, term)
+    context_data = extract_contextual_relationships(text, term, page_info)
     
     # Generate dynamic questions based on context
     questions = []
@@ -95,18 +100,18 @@ def generate_dynamic_questions(text, term):
     return questions
 
 # Function to generate contextual response to a question
-def generate_response_to_question(text, question, term):
+def generate_response_to_question(text, question, term, page_info):
     term = term.lower()
     
     # Extract contextual relationships
-    context_data = extract_contextual_relationships(text, term)
+    context_data = extract_contextual_relationships(text, term, page_info)
     
     # Identify question type and generate smart, context-aware responses
     if "about" in question or "what" in question.lower():
         if context_data:
             response = f"The document discusses '{term}' in various contexts: "
             for entry in context_data:
-                response += f"\n- In the sentence: '{entry['sentence']}', related terms are {', '.join(entry['related_terms'])}."
+                response += f"\n- Page {entry['page_number']}: '{entry['sentence']}', related terms are {', '.join(entry['related_terms'])}."
             return response
         else:
             return f"'{term}' is only briefly mentioned or not fully explored in the document."
@@ -142,17 +147,22 @@ def generate_response_to_question(text, question, term):
 def extract_text_from_pdf(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
+    page_info = {}
     
     # Iterate through each page
     for page_num in range(pdf_document.page_count):
         page = pdf_document.load_page(page_num)
         
         # Extract text using layout analysis (this helps to capture table-like structures)
-        text += page.get_text("text")  # Standard text extraction
-        # If needed, use 'html' or 'xml' mode to preserve structure (useful for tables)
-        # text += page.get_text("html")  # This might help with table extraction
+        page_text = page.get_text("text")  # Standard text extraction
+        text += page_text
+        
+        # Record page number for each sentence (simple approach: we assume each page's text is on one line)
+        sentences = page_text.split('.')
+        for sentence in sentences:
+            page_info[sentence.strip()] = page_num + 1  # Page numbers are 1-indexed
     
-    return text
+    return text, page_info
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Contextual Analysis")
@@ -165,7 +175,7 @@ if uploaded_file is not None:
     st.write(f"File: {uploaded_file.name}")
     
     # Extract text from the uploaded PDF
-    extracted_text = extract_text_from_pdf(uploaded_file)
+    extracted_text, page_info = extract_text_from_pdf(uploaded_file)
 
     # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
@@ -174,27 +184,27 @@ if uploaded_file is not None:
     custom_term = st.text_input("Enter a term to summarize references (e.g., 'eligibility')", "eligibility")
 
     # Generate dynamic question prompts
-    dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term)
+    dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term, page_info)
 
     # Display dynamic questions
     st.subheader("Sample Questions Based on Your Text")
     for question in dynamic_questions:
         if st.button(question):
             # Generate and display a response to the clicked question
-            response = generate_response_to_question(extracted_text, question, custom_term)
+            response = generate_response_to_question(extracted_text, question, custom_term, page_info)
             st.write(f"Response: {response}")
 
     # Extract and display all contextual mentions of the custom term in the document
-    context_data = extract_contextual_relationships(extracted_text, custom_term)
+    context_data = extract_contextual_relationships(extracted_text, custom_term, page_info)
     st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
     if context_data:
         for entry in context_data:
-            st.write(f"Sentence: {entry['sentence']}")
+            st.write(f"Page {entry['page_number']}: {entry['sentence']}")
             st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
     else:
         st.write(f"No contextual mentions of '{custom_term}' found.")
     
     # Generate and display a summary of mentions for the custom term
     st.subheader(f"Summary of Mentions of '{custom_term.capitalize()}'")
-    summary = summarize_mentions(extracted_text, custom_term)
+    summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
