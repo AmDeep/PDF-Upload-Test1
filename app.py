@@ -172,7 +172,7 @@ def extract_text_from_pdf(pdf_file):
         # Record page number for each sentence (simple approach: we assume each page's text is on one line)
         sentences = page_text.split('.')
         for sentence in sentences:
-            page_info[sentence.strip()] = page_num + 1  # Page numbers are 1-indexed
+            page_info[sentence.strip()] = page_text  # Store the full page text, not just the page number
     
     return text, page_info
 
