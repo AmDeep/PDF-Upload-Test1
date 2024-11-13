@@ -27,6 +27,7 @@ def extract_contextual_relationships(text, term, page_info):
     Analyze the contextual relationships between the user input term
     and other words in the document to generate contextually rich data, 
     including the page number and table (if applicable).
+    This function now also handles low-frequency terms or scattered mentions.
     """
     term = term.lower()
     sentences = text.split('.')
@@ -49,12 +50,23 @@ def extract_contextual_relationships(text, term, page_info):
                 "page_number": page_num
             })
     
+    # If no context found, check for single word occurrences
+    if not context_data:
+        for page_num, page_text in page_info.items():
+            if term in page_text:
+                context_data.append({
+                    "sentence": term,  # Just the term as a "sentence"
+                    "related_terms": [],  # No related terms for standalone word
+                    "page_number": page_num
+                })
+    
     return context_data
 
 # 5. Summarize Mentions of the User-Input Text
 def summarize_mentions(text, term, page_info):
     """
     Summarize all mentions of the user-input term in relation to the document, including page numbers.
+    Even if the term is just a single word, it will still be included.
     """
     term = term.lower()
     sentences = text.split('.')
@@ -67,7 +79,7 @@ def summarize_mentions(text, term, page_info):
             page_num = page_info.get(sentence, "Unknown page")
             summary_data.append(f"Page {page_num}: {sentence}")
     
-    # Return a concise summary of mentions
+    # Return a concise summary of mentions, including single word mentions
     if summary_data:
         return "\n".join(summary_data)
     else:
@@ -111,7 +123,7 @@ def generate_response_to_question(text, question, term, page_info):
         if context_data:
             response = f"The document discusses '{term}' in various contexts: "
             for entry in context_data:
-                response += f"\n- Page {entry['page_number']}: '{entry['sentence']}', related terms are {', '.join(entry['related_terms'])}."
+                response += f"\n- Page {entry['page_number']}: '{entry['sentence']}', related terms are {', '.join(entry['related_terms']) if entry['related_terms'] else 'none'}."
             return response
         else:
             return f"'{term}' is only briefly mentioned or not fully explored in the document."
@@ -200,7 +212,7 @@ if uploaded_file is not None:
     if context_data:
         for entry in context_data:
             st.write(f"Page {entry['page_number']}: {entry['sentence']}")
-            st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
+            st.write(f"Related Terms: {', '.join(entry['related_terms']) if entry['related_terms'] else 'none'}")
     else:
         st.write(f"No contextual mentions of '{custom_term}' found.")
     
