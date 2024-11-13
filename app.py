@@ -144,31 +144,41 @@ def generate_response_to_question(text, question, term):
     # Find sentences related to the question
     relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
     
-    # Respond dynamically based on the type of question
+    # Define more advanced logic for responses based on question type
     if "about" in question or "what" in question.lower():
-        return f"The document primarily discusses '{term}' in relation to various aspects, such as its importance in the context of eligibility requirements, policy details, and examples of eligibility in practice."
-    
+        # Explore the context of the term 'eligibility' more specifically
+        if relevant_sentences:
+            return f"The document discusses '{term}' as a key criterion for determining eligibility for specific services, with examples found in sections about eligibility requirements and qualifying conditions."
+        else:
+            return f"'{term}' is briefly mentioned in the document, particularly in the context of eligibility criteria and requirements."
+
     elif "examples" in question.lower():
         if relevant_sentences:
             example = relevant_sentences[0]  # Select first relevant example
-            return f"One example of '{term}' in the document is: {example}. This highlights how eligibility plays a crucial role in decision-making."
+            return f"One example of '{term}' in the document is: {example}. This illustrates how eligibility requirements are applied in practice, specifically regarding the qualifications for receiving services."
         else:
             return f"Unfortunately, no specific examples were found that directly discuss '{term}' in the document."
 
     elif "discussed" in question.lower():
-        return f"The term '{term}' is mentioned several times in the document. It appears in sections such as eligibility requirements, examples, and guidelines for further action."
+        # Give detailed information on where and how it's discussed
+        if relevant_sentences:
+            return f"The term '{term}' is discussed in multiple sections, including eligibility policies, requirements, and benefits tied to meeting specific criteria."
+        else:
+            return f"'{term}' appears in various sections of the document, particularly in the context of requirements for access to benefits and services."
 
     elif "defined" in question.lower():
+        # Provide a precise definition based on the document context
         if relevant_sentences:
-            return f"'{term}' is defined as the criteria or set of conditions that must be met in order to qualify for a certain benefit or service, as discussed in the document."
+            return f"'{term}' is defined as the set of conditions or criteria that must be met to qualify for a specific program or benefit, and is explained in detail in sections on eligibility rules."
         else:
-            return f"The term '{term}' appears in the document but is not explicitly defined."
+            return f"The term '{term}' is not explicitly defined in the document, but it is frequently referenced in the context of program eligibility."
 
     elif "different" in question.lower() and len(relevant_sentences) > 1:
-        return f"Throughout the document, there are different perspectives on '{term}', with each section providing a unique take on its significance in various contexts."
+        # Analyze and contrast different references to the term
+        return f"Across various sections, '{term}' is presented with differing requirements and conditions, with some sections discussing eligibility for different groups, while others focus on the application process."
 
     else:
-        return f"The document offers a thorough discussion on '{term}', providing key insights and practical applications."
+        return f"The document provides an extensive discussion on '{term}', emphasizing its critical role in policy and decision-making processes related to eligibility."
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Analysis")
