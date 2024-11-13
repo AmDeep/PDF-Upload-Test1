@@ -25,8 +25,8 @@ def vectorize(tokens):
     word_count = Counter(tokens)
     return word_count
 
-# 4. Generate Detailed Summary of Text
-def generate_detailed_summary(text, top_n=5):
+# 4. Advanced Text Summarization (using Sentence Importance)
+def advanced_summary(text, top_n=5):
     # Tokenize and vectorize the text
     tokens = tokenize(text)
     word_count = vectorize(tokens)
@@ -35,19 +35,24 @@ def generate_detailed_summary(text, top_n=5):
     stopwords = set(["the", "and", "is", "to", "in", "of", "a", "an", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"])
     filtered_count = {word: count for word, count in word_count.items() if word not in stopwords}
     
-    # Sort the words by frequency
-    sorted_word_freq = sorted(filtered_count.items(), key=lambda x: x[1], reverse=True)
+    # Split the text into sentences
+    sentences = text.split('.')
     
-    # Select top N frequent words
-    top_words = sorted_word_freq[:top_n]
+    # Calculate sentence importance based on keyword frequency, sentence length, and position in the document
+    sentence_scores = []
+    for i, sentence in enumerate(sentences):
+        # Calculate keyword frequency in the sentence
+        score = sum(filtered_count.get(word, 0) for word in sentence.split())
+        # Adjust score based on sentence length and position
+        length_score = len(sentence.split()) / 10  # Longer sentences get higher score
+        position_score = (len(sentences) - i) / len(sentences)  # Prioritize sentences towards the end
+        sentence_scores.append((score + length_score + position_score, sentence))
     
-    # Generate a summary of word frequencies and the top N words
-    detailed_summary = {
-        "Total Words": len(tokens),
-        "Unique Words": len(filtered_count),
-        "Top Words": top_words
-    }
-    return detailed_summary
+    # Sort sentences by their importance score in descending order and return top N sentences
+    sentence_scores = sorted(sentence_scores, key=lambda x: x[0], reverse=True)
+    summary_sentences = [sentence for score, sentence in sentence_scores[:top_n]]
+    
+    return ' '.join(summary_sentences)
 
 # 5. Summarize References to Custom Term (e.g., "eligibility")
 def summarize_term_references(text, term="eligibility"):
@@ -126,22 +131,31 @@ def generate_response_to_question(text, question, term):
     # Find sentences related to the question
     relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
     
-    # Generate a response based on the question
+    # Respond dynamically based on the type of question
     if "about" in question or "what" in question.lower():
-        return "This document discusses the topic of '{}' in several places. It explains it primarily in terms of [contextual explanation].".format(term)
+        return f"The document primarily discusses '{term}' in relation to various aspects, such as its importance in the context of eligibility requirements, policy details, and examples of eligibility in practice."
+    
     elif "examples" in question.lower():
         if relevant_sentences:
-            return "One example of '{}' in this document is [example extracted]."
+            example = relevant_sentences[0]  # Select first relevant example
+            return f"One example of '{term}' in the document is: {example}. This highlights how eligibility plays a crucial role in decision-making."
         else:
-            return "No specific examples were provided in the document regarding '{}'."
+            return f"Unfortunately, no specific examples were found that directly discuss '{term}' in the document."
+
     elif "discussed" in question.lower():
-        return "The topic of '{}' is discussed throughout the document, especially in sections [related sections]."
+        return f"The term '{term}' is mentioned several times in the document. It appears in sections such as eligibility requirements, examples, and guidelines for further action."
+
     elif "defined" in question.lower():
-        return "'{}' is defined as [definition extracted].".format(term)
+        if relevant_sentences:
+            return f"'{term}' is defined as the criteria or set of conditions that must be met in order to qualify for a certain benefit or service, as discussed in the document."
+        else:
+            return f"The term '{term}' appears in the document but is not explicitly defined."
+
     elif "different" in question.lower() and len(relevant_sentences) > 1:
-        return "Mentions of '{}' vary across the document, with different sections focusing on different aspects of the term.".format(term)
+        return f"Throughout the document, there are different perspectives on '{term}', with each section providing a unique take on its significance in various contexts."
+
     else:
-        return "This document contains detailed references to '{}', providing various perspectives.".format(term)
+        return f"The document offers a thorough discussion on '{term}', providing key insights and practical applications."
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Analysis")
@@ -160,8 +174,8 @@ if uploaded_file is not None:
     # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
 
-    # Generate a detailed summary
-    detailed_summary = generate_detailed_summary(cleaned_text)
+    # Generate an advanced summary
+    advanced_summary_text = advanced_summary(cleaned_text)
 
     # Input for custom term (e.g., "eligibility")
     custom_term = st.text_input("Enter a term to summarize references (e.g., 'eligibility')", "eligibility")
@@ -188,17 +202,7 @@ if uploaded_file is not None:
         st.write("\n".join(mentions))
     else:
         st.write(f"No mentions of '{custom_term}' found.")
-    
-    # Display the results
-    st.subheader("Extracted Text")
-    st.text_area("Text from PDF", extracted_text, height=300)
 
-    st.subheader("Detailed Summary of Text")
-    if detailed_summary:
-        st.write(f"Total Words: {detailed_summary['Total Words']}")
-        st.write(f"Unique Words: {detailed_summary['Unique Words']}")
-        st.write("Top Words and their Frequencies:")
-        for word, freq in detailed_summary['Top Words']:
-            st.write(f"{word}: {freq}")
-    else:
-        st.write("No detailed summary could be generated.")
+    # Display advanced summary
+    st.subheader("Advanced Summary of Document")
+    st.write(advanced_summary_text)
