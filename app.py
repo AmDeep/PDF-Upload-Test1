@@ -47,6 +47,27 @@ def extract_contextual_relationships(text, term):
     
     return context_data
 
+# 5. Summarize Mentions of the User-Input Text
+def summarize_mentions(text, term):
+    """
+    Summarize all mentions of the user-input term in relation to the document.
+    """
+    term = term.lower()
+    sentences = text.split('.')
+    summary_data = []
+
+    # Find all sentences that mention the term
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if term in sentence:
+            summary_data.append(sentence)
+    
+    # Return a concise summary of mentions
+    if summary_data:
+        return "\n".join(summary_data)
+    else:
+        return f"No mentions of '{term}' found in the document."
+
 # Function to generate dynamic question prompts based on the extracted term
 def generate_dynamic_questions(text, term):
     term = term.lower()
@@ -165,3 +186,8 @@ if uploaded_file is not None:
             st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
     else:
         st.write(f"No contextual mentions of '{custom_term}' found.")
+    
+    # Generate and display a summary of mentions for the custom term
+    st.subheader(f"Summary of Mentions of '{custom_term.capitalize()}'")
+    summary = summarize_mentions(extracted_text, custom_term)
+    st.write(summary)
