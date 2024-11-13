@@ -162,8 +162,8 @@ def extract_text_from_pdf(pdf_file):
     
     return text
 
-# Function to print full lines with the term (including page info)
-def print_full_lines_with_term(extracted_text, term, page_info):
+# Function to print full lines with the term (without page info)
+def print_full_lines_with_term(extracted_text, term):
     term = term.lower()
     full_lines_with_term = []
     
@@ -171,15 +171,9 @@ def print_full_lines_with_term(extracted_text, term, page_info):
     lines = extracted_text.split('\n')
     for line in lines:
         if term in line.lower():
-            # Look up the page number based on the line's context
-            page_num = page_info.get(line.strip(), "Unknown page")
-            
-            # Ensure page_num is a string before concatenation
-            if isinstance(page_num, int):
-                page_num = str(page_num + 1)  # Convert page number to string and add 1 for 1-based indexing
-            
+            # Highlight the term by underlining and bolding it in the output
             full_line = line.replace(term, f"**_{term}_**")
-            full_lines_with_term.append(f"Page {page_num}: {full_line}")  # Ensure page_num is properly formatted as a string
+            full_lines_with_term.append(full_line)  # Just print the line containing the term
     
     return "\n".join(full_lines_with_term)
 
@@ -229,24 +223,17 @@ if uploaded_file is not None:
     # Extract and display all contextual mentions of the custom term in the document
     context_data = extract_contextual_relationships(extracted_text, custom_term)
     st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
-    
     if context_data:
         for entry in context_data:
             st.write(f"Sentence: {entry['sentence']}")
-            if entry['related_terms']:
-                st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
-    else:
-        st.write(f"No mentions of '{custom_term}' found in the document.")
-
-    # Full lines containing the custom term
-    st.subheader(f"Full Lines Containing '{custom_term.capitalize()}'")
-    full_lines = print_full_lines_with_term(extracted_text, custom_term, page_info={})  # Assuming `page_info` is provided
+            st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
+    
+    # Print full lines with the term (no page info, just lines containing the term)
+    st.subheader("List all the text referencing the user input term")
+    full_lines = print_full_lines_with_term(extracted_text, custom_term)
     st.write(full_lines)
 
-    # List of related terms
+    # Display related terms
     related_terms = extract_related_terms(extracted_text, custom_term)
-    st.subheader(f"Related Terms to '{custom_term.capitalize()}'")
-    if related_terms:
-        st.write(f"Related terms found in the document: {', '.join(related_terms)}")
-    else:
-        st.write(f"No related terms found for '{custom_term}' in the document.")
+    st.subheader(f"Terms related to or similar to '{custom_term.capitalize()}'")
+    st.write(related_terms)
