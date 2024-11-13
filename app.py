@@ -122,16 +122,20 @@ def extract_contextual_relationships(text, term, page_info):
     
     return context_data
 
-# 7. Display Extracted Data (Including First 50 Pages if PDF is Large)
-def display_first_50_pages(extracted_text, page_info):
-    pages = extracted_text.split('\n')
-    page_count = len(pages)
-    if page_count > 50:
-        # Display only the first 50 pages of the document
-        pages = pages[:50]
-        st.write("\n".join(pages))
+# 7. Display Pages where Term is Found
+def display_pages_with_term(page_info, term):
+    term = term.lower()
+    pages_found = set()
+
+    # Iterate through page_info to find where the term appears
+    for sentence, page_num in page_info.items():
+        if term in sentence.lower():  # Check if the term is in the sentence
+            pages_found.add(page_num + 1)  # Page number is 1-based in the output
+    
+    if pages_found:
+        return f"The term '{term}' was found on the following pages: " + ", ".join(map(str, sorted(pages_found)))
     else:
-        st.write(extracted_text)
+        return f"No mentions of '{term}' found in the document."
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Contextual Analysis")
@@ -178,9 +182,10 @@ if uploaded_file is not None:
     summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
 
-    # Show extracted raw text from the PDF (first 50 pages if document has more than 50 pages)
-    st.subheader("Extracted Text from Document")
-    display_first_50_pages(extracted_text, page_info)
+    # Show list of pages where the term is found
+    st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}'")
+    pages_with_term = display_pages_with_term(page_info, custom_term)
+    st.write(pages_with_term)
     
     # Show extracted tables (if any)
     if tables:
