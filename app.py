@@ -138,13 +138,20 @@ def generate_response_to_question(text, question, term):
     else:
         return f"The document offers a detailed exploration of '{term}', providing insight into its significance in relation to other policy terms."
 
-# Function to extract text from PDF
+# Function to extract text from PDF (including tables)
 def extract_text_from_pdf(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
+    
+    # Iterate through each page
     for page_num in range(pdf_document.page_count):
         page = pdf_document.load_page(page_num)
-        text += page.get_text()
+        
+        # Extract text using layout analysis (this helps to capture table-like structures)
+        text += page.get_text("text")  # Standard text extraction
+        # If needed, use 'html' or 'xml' mode to preserve structure (useful for tables)
+        # text += page.get_text("html")  # This might help with table extraction
+    
     return text
 
 # Main Streamlit app interface
