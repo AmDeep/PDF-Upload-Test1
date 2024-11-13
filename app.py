@@ -1,13 +1,14 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import re
-from collections import Counter
+import pandas as pd
+from io import StringIO
 
 # 1. Data Cleaning
 def clean_text(text):
     # Convert text to lowercase
     text = text.lower()
-    # Remove numbers and punctuation
+    # Remove special characters except for spaces and alphanumeric characters (e.g., remove periods)
     text = re.sub(r'[^\w\s]', '', text)
     # Remove extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
@@ -17,57 +18,35 @@ def clean_text(text):
 def tokenize(text):
     return text.split()
 
-# 3. Vectorization (Simple Bag of Words)
-def vectorize(tokens):
-    return Counter(tokens)
+# 3. Extract Text and Tables from PDF
+def extract_text_and_tables_from_pdf(pdf_file):
+    pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    text = ""
+    page_info = {}
+    tables = []
 
-# 4. Extract Contextual Relationships
-def extract_contextual_relationships(text, term, page_info):
-    """
-    Analyze the contextual relationships between the user input term
-    and other words in the document to generate contextually rich data, 
-    including the page number and table (if applicable).
-    This function now also handles low-frequency terms or scattered mentions.
-    """
-    term = term.lower()
-    sentences = text.split('.')
-    context_data = []
-    
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if term in sentence:
-            # Identify which page this sentence is from
-            page_num = page_info.get(sentence, "Unknown page")  # Default to "Unknown page" if no page is found
-            words = sentence.split()
-            relevant_words = [word for word in words if word not in ["the", "and", "is", "to", "in", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"]]
-            
-            # Look for related terms based on proximity in the sentence
-            related_terms = [word for word in relevant_words if word != term]
-            
-            context_data.append({
-                "sentence": sentence,
-                "related_terms": related_terms,
-                "page_number": page_num
-            })
-    
-    # If no context found, check for single word occurrences
-    if not context_data:
-        for page_num, page_text in page_info.items():
-            if term in page_text:
-                context_data.append({
-                    "sentence": term,  # Just the term as a "sentence"
-                    "related_terms": [],  # No related terms for standalone word
-                    "page_number": page_num
-                })
-    
-    return context_data
+    # Iterate through each page
+    for page_num in range(pdf_document.page_count):
+        page = pdf_document.load_page(page_num)
+        
+        # Extract text using standard text extraction
+        page_text = page.get_text("text")  # Standard text extraction
+        text += page_text
 
-# 5. Summarize Mentions of the User-Input Text
+        # Try to extract tables from the page using layout analysis (this works well for tables)
+        page_tables = page.get_text("table")  # This returns tables as structured text
+        if page_tables:
+            tables.append(page_tables)
+        
+        # Record page number for each sentence
+        sentences = page_text.split('.')
+        for sentence in sentences:
+            page_info[sentence.strip()] = page_num  # Store the page number for each sentence
+    
+    return text, page_info, tables
+
+# 4. Summarize Mentions of the User-Input Term
 def summarize_mentions(text, term, page_info):
-    """
-    Summarize all mentions of the user-input term in relation to the document, including page numbers.
-    Even if the term is just a single word, it will still be included.
-    """
     term = term.lower()
     sentences = text.split('.')
     summary_data = []
@@ -85,7 +64,7 @@ def summarize_mentions(text, term, page_info):
     else:
         return f"No mentions of '{term}' found in the document."
 
-# Function to generate dynamic question prompts based on the extracted term
+# 5. Generate Contextual Questions
 def generate_dynamic_questions(text, term, page_info):
     term = term.lower()
     
@@ -111,70 +90,48 @@ def generate_dynamic_questions(text, term, page_info):
     
     return questions
 
-# Function to generate contextual response to a question
-def generate_response_to_question(text, question, term, page_info):
+# 6. Extract Contextual Relationships
+def extract_contextual_relationships(text, term, page_info):
+    """
+    Extract and find sentences or mentions of the term and their page number.
+    """
     term = term.lower()
+    sentences = text.split('.')
+    context_data = []
     
-    # Extract contextual relationships
-    context_data = extract_contextual_relationships(text, term, page_info)
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if term in sentence:
+            page_num = page_info.get(sentence, "Unknown page")
+            relevant_words = [word for word in sentence.split() if word != term]
+            context_data.append({
+                "sentence": sentence,
+                "related_terms": relevant_words,
+                "page_number": page_num
+            })
     
-    # Identify question type and generate smart, context-aware responses
-    if "about" in question or "what" in question.lower():
-        if context_data:
-            response = f"The document discusses '{term}' in various contexts: "
-            for entry in context_data:
-                response += f"\n- Page {entry['page_number']}: '{entry['sentence']}', related terms are {', '.join(entry['related_terms']) if entry['related_terms'] else 'none'}."
-            return response
-        else:
-            return f"'{term}' is only briefly mentioned or not fully explored in the document."
+    # If no context found, look for single word occurrences
+    if not context_data:
+        for page_num, page_text in page_info.items():
+            if term in page_text:
+                context_data.append({
+                    "sentence": term,  # Single term mention
+                    "related_terms": [],
+                    "page_number": page_num
+                })
+    
+    return context_data
 
-    elif "examples" in question.lower():
-        examples = [entry['sentence'] for entry in context_data if "example" in entry['sentence'].lower()]
-        if examples:
-            return f"Here is an example of '{term}' in the document: {examples[0]}"
-        else:
-            return f"No clear examples of '{term}' were found in the document."
-
-    elif "requirements" in question.lower() or "rules" in question.lower():
-        requirements = [entry['sentence'] for entry in context_data if "requirement" in entry['sentence'].lower()]
-        if requirements:
-            return f"'{term}' is associated with specific eligibility requirements, such as {requirements[0]}"
-        else:
-            return f"No specific eligibility requirements related to '{term}' were found in the document."
-
-    elif "defined" in question.lower():
-        definitions = [entry['sentence'] for entry in context_data if "defined" in entry['sentence'].lower()]
-        if definitions:
-            return f"'{term}' is defined in the document as: {definitions[0]}"
-        else:
-            return f"'{term}' is not explicitly defined in the document."
-
-    elif "different" in question.lower() and len(context_data) > 1:
-        return f"Across different sections, '{term}' is discussed from various perspectives, such as eligibility conditions, examples of qualifying factors, and eligibility rules."
-
+# 7. Display Extracted Data (Including First 50 Pages if PDF is Large)
+def display_first_50_pages(extracted_text, page_info):
+    pages = extracted_text.split('\n')
+    page_count = len(pages)
+    if page_count > 50:
+        # Display only the first 50 pages of the document
+        pages = pages[:50]
+        st.write("\n".join(pages))
     else:
-        return f"The document offers a detailed exploration of '{term}', providing insight into its significance in relation to other policy terms."
-
-# Function to extract text from PDF (including tables)
-def extract_text_from_pdf(pdf_file):
-    pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
-    text = ""
-    page_info = {}
-    
-    # Iterate through each page
-    for page_num in range(pdf_document.page_count):
-        page = pdf_document.load_page(page_num)
-        
-        # Extract text using layout analysis (this helps to capture table-like structures)
-        page_text = page.get_text("text")  # Standard text extraction
-        text += page_text
-        
-        # Record page number for each sentence (simple approach: we assume each page's text is on one line)
-        sentences = page_text.split('.')
-        for sentence in sentences:
-            page_info[sentence.strip()] = page_text  # Store the full page text, not just the page number
-    
-    return text, page_info
+        st.write(extracted_text)
 
 # Main Streamlit app interface
 st.title("PDF Text Extractor and Contextual Analysis")
@@ -186,8 +143,8 @@ uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 if uploaded_file is not None:
     st.write(f"File: {uploaded_file.name}")
     
-    # Extract text from the uploaded PDF
-    extracted_text, page_info = extract_text_from_pdf(uploaded_file)
+    # Extract text and tables from the uploaded PDF
+    extracted_text, page_info, tables = extract_text_and_tables_from_pdf(uploaded_file)
 
     # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
@@ -221,6 +178,13 @@ if uploaded_file is not None:
     summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
 
-    # Show extracted raw text from the PDF
+    # Show extracted raw text from the PDF (first 50 pages if document has more than 50 pages)
     st.subheader("Extracted Text from Document")
-    st.write(extracted_text)  # This displays the raw extracted text
+    display_first_50_pages(extracted_text, page_info)
+    
+    # Show extracted tables (if any)
+    if tables:
+        st.subheader("Extracted Tables")
+        for idx, table in enumerate(tables):
+            st.write(f"Table {idx + 1}:")
+            st.write(table)
