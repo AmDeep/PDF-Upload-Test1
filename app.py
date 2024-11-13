@@ -117,18 +117,38 @@ def extract_contextual_relationships(text, term, page_info):
     
     return context_data
 
-# 7. Display Pages where Term is Found
-def display_pages_with_term(page_info, term):
+# 7. Display Pages with Mentions of Term and Surrounding Text
+def display_pages_with_term(page_info, term, extracted_text, context_window=30):
     term = term.lower()
     pages_found = set()
+    page_snippets = {}
 
     # Iterate through page_info to find where the term appears
     for sentence, page_num in page_info.items():
         if term in sentence.lower():  # Check if the term is in the sentence
             pages_found.add(page_num + 1)  # Page number is 1-based in the output
+            
+            # Get the surrounding context from the extracted text
+            start_idx = max(0, sentence.lower().find(term) - context_window)
+            end_idx = min(len(extracted_text), sentence.lower().find(term) + len(term) + context_window)
+            snippet = extracted_text[start_idx:end_idx]
+            
+            if page_num + 1 not in page_snippets:
+                page_snippets[page_num + 1] = []
+            
+            # Add the snippet to the page's list of mentions
+            page_snippets[page_num + 1].append(snippet.strip())
     
+    # Build a summary with snippets of the surrounding text
     if pages_found:
-        return f"The term '{term}' was found on the following pages: " + ", ".join(map(str, sorted(pages_found)))
+        result = f"The term '{term}' was found on the following pages:\n"
+        for page_num in sorted(pages_found):
+            result += f"\n**Page {page_num}:**\n"
+            if page_num in page_snippets:
+                for snippet in page_snippets[page_num]:
+                    highlighted_snippet = snippet.replace(term, f"**_{term}_**")
+                    result += f"  - {highlighted_snippet}\n"
+        return result
     else:
         return f"No mentions of '{term}' found in the document."
 
@@ -179,7 +199,7 @@ if uploaded_file is not None:
     summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
 
-    # Show list of pages where the term is found
-    st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}'")
-    pages_with_term = display_pages_with_term(page_info, custom_term)
+    # Show list of pages where the term is found with context
+    st.subheader(f"Pages with Mentions of '{custom_term.capitalize()}' and Surrounding Context")
+    pages_with_term = display_pages_with_term(page_info, custom_term, extracted_text)
     st.write(pages_with_term)
