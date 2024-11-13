@@ -15,56 +15,110 @@ def clean_text(text):
 
 # 2. Tokenization
 def tokenize(text):
-    # Split the text into words based on spaces
-    tokens = text.split()
-    return tokens
+    return text.split()
 
 # 3. Vectorization (Simple Bag of Words)
 def vectorize(tokens):
-    # Create a dictionary with the frequency of each token
-    word_count = Counter(tokens)
-    return word_count
+    return Counter(tokens)
 
-# 4. Create Network Graph (text-based) for Related Terms
-def create_network_plot(text, term, top_n=10):
-    # Normalize the text and term to lowercase
+# 4. Extract Contextual Relationships
+def extract_contextual_relationships(text, term):
+    """
+    Analyze the contextual relationships between the user input term
+    and other words in the document to generate contextually rich data.
+    """
     term = term.lower()
-    text = text.lower()
+    sentences = text.split('.')
+    context_data = []
     
-    # Tokenize the cleaned text
-    tokens = tokenize(text)
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if term in sentence:
+            words = sentence.split()
+            relevant_words = [word for word in words if word not in ["the", "and", "is", "to", "in", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"]]
+            
+            # Look for related terms based on proximity in the sentence
+            related_terms = [word for word in relevant_words if word != term]
+            
+            context_data.append({
+                "sentence": sentence,
+                "related_terms": related_terms
+            })
     
-    # Identify important terms by frequency (excluding stopwords)
-    stopwords = set(["the", "and", "is", "to", "in", "of", "a", "an", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"])
-    filtered_tokens = [word for word in tokens if word not in stopwords]
+    return context_data
+
+# Function to generate dynamic question prompts based on the extracted term
+def generate_dynamic_questions(text, term):
+    term = term.lower()
     
-    # Build a frequency count of the filtered tokens
-    word_count = Counter(filtered_tokens)
+    # Extract contextual relationships
+    context_data = extract_contextual_relationships(text, term)
     
-    # Extract terms that co-occur with the user-input term in the text
-    co_occurring_terms = [word for word in word_count if term in word]
+    # Generate dynamic questions based on context
+    questions = []
+    if context_data:
+        questions.append(f"What is mentioned about '{term}' in the document?")
+        questions.append(f"Can you provide examples of '{term}' being discussed in the document?")
+        
+        # Check for policy, rules, or definitions
+        if any("requirement" in sentence.lower() for sentence in [entry['sentence'] for entry in context_data]):
+            questions.append(f"What requirements or rules are associated with '{term}'?")
+        
+        if any("defined" in sentence.lower() for sentence in [entry['sentence'] for entry in context_data]):
+            questions.append(f"How is '{term}' defined in the document?")
+        
+        # Comparative questions if term appears in multiple contexts
+        if len(context_data) > 1:
+            questions.append(f"How does the discussion of '{term}' differ in various sections of the document?")
     
-    # Generate a simple textual network plot representation
-    network_data = {}
-    network_data[term] = []
+    return questions
+
+# Function to generate contextual response to a question
+def generate_response_to_question(text, question, term):
+    term = term.lower()
     
-    for word, count in word_count.items():
-        if word != term and word in co_occurring_terms:
-            network_data[term].append((word, count))
+    # Extract contextual relationships
+    context_data = extract_contextual_relationships(text, term)
     
-    # Create and display the textual representation of the network
-    network_plot_text = f"Network of Terms Related to '{term.capitalize()}':\n"
-    if not network_data[term]:
-        network_plot_text += f"No related terms found for '{term}' in the document.\n"
+    # Identify question type and generate smart, context-aware responses
+    if "about" in question or "what" in question.lower():
+        if context_data:
+            response = f"The document discusses '{term}' in various contexts: "
+            for entry in context_data:
+                response += f"\n- In the sentence: '{entry['sentence']}', related terms are {', '.join(entry['related_terms'])}."
+            return response
+        else:
+            return f"'{term}' is only briefly mentioned or not fully explored in the document."
+
+    elif "examples" in question.lower():
+        examples = [entry['sentence'] for entry in context_data if "example" in entry['sentence'].lower()]
+        if examples:
+            return f"Here is an example of '{term}' in the document: {examples[0]}"
+        else:
+            return f"No clear examples of '{term}' were found in the document."
+
+    elif "requirements" in question.lower() or "rules" in question.lower():
+        requirements = [entry['sentence'] for entry in context_data if "requirement" in entry['sentence'].lower()]
+        if requirements:
+            return f"'{term}' is associated with specific eligibility requirements, such as {requirements[0]}"
+        else:
+            return f"No specific eligibility requirements related to '{term}' were found in the document."
+
+    elif "defined" in question.lower():
+        definitions = [entry['sentence'] for entry in context_data if "defined" in entry['sentence'].lower()]
+        if definitions:
+            return f"'{term}' is defined in the document as: {definitions[0]}"
+        else:
+            return f"'{term}' is not explicitly defined in the document."
+
+    elif "different" in question.lower() and len(context_data) > 1:
+        return f"Across different sections, '{term}' is discussed from various perspectives, such as eligibility conditions, examples of qualifying factors, and eligibility rules."
+
     else:
-        for related_term, count in network_data[term]:
-            network_plot_text += f"- {related_term} (Frequency: {count})\n"
-    
-    return network_plot_text
+        return f"The document offers a detailed exploration of '{term}', providing insight into its significance in relation to other policy terms."
 
 # Function to extract text from PDF
 def extract_text_from_pdf(pdf_file):
-    # Open the uploaded file as a binary stream
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     for page_num in range(pdf_document.page_count):
@@ -72,123 +126,14 @@ def extract_text_from_pdf(pdf_file):
         text += page.get_text()
     return text
 
-# Function to find all mentions of a custom term or similar words
-def find_all_mentions(text, term="eligibility"):
-    # Using a simple word matching method for finding the term and similar words
-    term_variants = [term, term + "s", term + "es", term + "ed", term + "ing"]
-    mentions = []
-    
-    # Split the text into sentences and find all occurrences
-    sentences = text.split('.')
-    for sentence in sentences:
-        if any(variant in sentence.lower() for variant in term_variants):
-            mentions.append(sentence.strip())
-    
-    return mentions
-
-# Function to find similar terms (based on prefix/suffix matching)
-def find_similar_terms(text, term, threshold=0.6):
-    # Check for words that share a common prefix or suffix with the term
-    term_length = len(term)
-    similar_terms = set()
-    
-    # Tokenize the text and compare with the input term
-    tokens = tokenize(text)
-    for token in tokens:
-        # Check if there's a reasonable similarity based on the term length
-        if len(token) >= term_length and (token.startswith(term[:3]) or token.endswith(term[-3:])):
-            similar_terms.add(token)
-    
-    return similar_terms
-
-# Function to generate dynamic question prompts based on the extracted term
-def generate_dynamic_questions(text, term):
-    # Normalize the text and term to lowercase
-    term = term.lower()
-    text = text.lower()
-    
-    # Split the text into sentences
-    sentences = text.split('.')
-    
-    # Find all sentences that contain the term or its variants
-    relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
-    
-    # Generate up to 5 dynamic questions based on the term's context in the document
-    questions = []
-    
-    # Basic question structure
-    questions.append(f"What is mentioned about '{term}' in the document?")
-    
-    if relevant_sentences:
-        questions.append(f"What are the key examples or details provided about '{term}'?")
-        questions.append(f"Where is '{term}' discussed in the document?")
-        
-        # Check if there are multiple references to create a comparative question
-        if len(relevant_sentences) > 1:
-            questions.append(f"How are the mentions of '{term}' different across the document?")
-        
-        questions.append(f"How is '{term}' defined or explained?")
-    
-    # Limit the number of questions to 5
-    return questions[:5]
-
-# Function to generate contextual response to a question
-def generate_response_to_question(text, question, term):
-    # Normalize the text and term to lowercase
-    term = term.lower()
-    text = text.lower()
-    
-    # Split the text into sentences
-    sentences = text.split('.')
-    
-    # Find sentences related to the question
-    relevant_sentences = [sentence.strip() for sentence in sentences if term in sentence]
-    
-    # Define more advanced logic for responses based on question type
-    if "about" in question or "what" in question.lower():
-        # Explore the context of the term 'eligibility' more specifically
-        if relevant_sentences:
-            return f"The document discusses '{term}' as a key criterion for determining eligibility for specific services, with examples found in sections about eligibility requirements and qualifying conditions."
-        else:
-            return f"'{term}' is briefly mentioned in the document, particularly in the context of eligibility criteria and requirements."
-
-    elif "examples" in question.lower():
-        if relevant_sentences:
-            example = relevant_sentences[0]  # Select first relevant example
-            return f"One example of '{term}' in the document is: {example}. This illustrates how eligibility requirements are applied in practice, specifically regarding the qualifications for receiving services."
-        else:
-            return f"Unfortunately, no specific examples were found that directly discuss '{term}' in the document."
-
-    elif "discussed" in question.lower():
-        # Give detailed information on where and how it's discussed
-        if relevant_sentences:
-            return f"The term '{term}' is discussed in multiple sections, including eligibility policies, requirements, and benefits tied to meeting specific criteria."
-        else:
-            return f"'{term}' appears in various sections of the document, particularly in the context of requirements for access to benefits and services."
-
-    elif "defined" in question.lower():
-        # Provide a precise definition based on the document context
-        if relevant_sentences:
-            return f"'{term}' is defined as the set of conditions or criteria that must be met to qualify for a specific program or benefit, and is explained in detail in sections on eligibility rules."
-        else:
-            return f"The term '{term}' is not explicitly defined in the document, but it is frequently referenced in the context of program eligibility."
-
-    elif "different" in question.lower() and len(relevant_sentences) > 1:
-        # Analyze and contrast different references to the term
-        return f"Across various sections, '{term}' is presented with differing requirements and conditions, with some sections discussing eligibility for different groups, while others focus on the application process."
-
-    else:
-        return f"The document provides an extensive discussion on '{term}', emphasizing its critical role in policy and decision-making processes related to eligibility."
-
 # Main Streamlit app interface
-st.title("PDF Text Extractor and Analysis")
+st.title("PDF Text Extractor and Contextual Analysis")
 st.write("Upload a PDF file to extract its text, clean it, and analyze content based on a custom term.")
 
 # File uploader widget
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
 if uploaded_file is not None:
-    # Display the uploaded PDF file name
     st.write(f"File: {uploaded_file.name}")
     
     # Extract text from the uploaded PDF
@@ -203,7 +148,7 @@ if uploaded_file is not None:
     # Generate dynamic question prompts
     dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term)
 
-    # Display sample question prompts based on the extracted term
+    # Display dynamic questions
     st.subheader("Sample Questions Based on Your Text")
     for question in dynamic_questions:
         if st.button(question):
@@ -211,24 +156,12 @@ if uploaded_file is not None:
             response = generate_response_to_question(extracted_text, question, custom_term)
             st.write(f"Response: {response}")
 
-    # Display all mentions of the custom term in the document
-    mentions = find_all_mentions(extracted_text, term=custom_term)
-    
-    st.subheader(f"All Mentions of '{custom_term.capitalize()}'")
-    if mentions:
-        st.write("\n".join(mentions))
+    # Extract and display all contextual mentions of the custom term in the document
+    context_data = extract_contextual_relationships(extracted_text, custom_term)
+    st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
+    if context_data:
+        for entry in context_data:
+            st.write(f"Sentence: {entry['sentence']}")
+            st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
     else:
-        st.write(f"No mentions of '{custom_term}' found.")
-    
-    # Generate and display the network plot text representation
-    st.subheader(f"Network Plot of Terms Related to '{custom_term.capitalize()}'")
-    network_plot_text = create_network_plot(cleaned_text, custom_term)
-    st.text(network_plot_text)
-
-    # Find similar terms related to the custom term
-    similar_terms = find_similar_terms(cleaned_text, custom_term)
-    st.subheader(f"Similar Terms to '{custom_term.capitalize()}'")
-    if similar_terms:
-        st.write("\n".join(similar_terms))
-    else:
-        st.write(f"No similar terms found for '{custom_term}'.")
+        st.write(f"No contextual mentions of '{custom_term}' found.")
