@@ -2,7 +2,6 @@ import streamlit as st
 import fitz  # PyMuPDF
 import re
 from collections import Counter
-from io import StringIO
 
 # 1. Data Cleaning
 def clean_text(text):
@@ -52,7 +51,7 @@ def summarize_mentions(text, term, page_info):
             page_num = page_info.get(sentence, "Unknown page")
             # Bold and underline the term for better visibility
             highlighted_sentence = sentence.replace(term, f"**_{term}_**")
-            summary_data.append(f"Page {page_num}: {highlighted_sentence}")
+            summary_data.append(f"Page {str(page_num + 1)}: {highlighted_sentence}")  # Convert page_num to str
     
     # Return a concise summary of mentions, including single word mentions
     if summary_data:
@@ -144,7 +143,7 @@ def display_pages_with_term(page_info, term, extracted_text, context_window=30):
     if pages_found:
         result = f"The term '{term}' was found on the following pages:\n"
         for page_num in sorted(pages_found):
-            result += f"\n**Page {page_num}:**\n"
+            result += f"\n**Page {str(page_num)}:**\n"  # Convert page_num to str
             if page_num in page_snippets:
                 for snippet in page_snippets[page_num]:
                     highlighted_snippet = snippet.replace(term, f"**_{term}_**")
@@ -164,7 +163,7 @@ def print_full_lines_with_term(extracted_text, term, page_info):
         if term in line.lower():
             page_num = page_info.get(line.strip(), "Unknown page")
             full_line = line.replace(term, f"**_{term}_**")
-            full_lines_with_term.append(f"Page {page_num + 1}: {full_line}")
+            full_lines_with_term.append(f"Page {str(page_num + 1)}: {full_line}")  # Convert page_num to str
     
     return "\n".join(full_lines_with_term)
 
