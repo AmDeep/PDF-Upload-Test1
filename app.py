@@ -1,14 +1,15 @@
 import streamlit as st
 import fitz  # PyMuPDF
 import re
-import math
 from collections import Counter
-import numpy as np
 
 # 1. Data Cleaning
 def clean_text(text):
+    # Convert text to lowercase
     text = text.lower()
+    # Remove numbers and punctuation
     text = re.sub(r'[^\w\s]', '', text)
+    # Remove extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -16,123 +17,106 @@ def clean_text(text):
 def tokenize(text):
     return text.split()
 
-# 3. Vectorization (Manual TF-IDF Implementation)
-def compute_tfidf(text):
-    # Tokenize and count term frequencies
+# 3. Vectorization (Simple Bag of Words)
+def vectorize(tokens):
+    return Counter(tokens)
+
+# 4. Extract Contextual Relationships
+def extract_contextual_relationships(text, term, page_info=None):
+    """
+    Analyze the contextual relationships between the user input term
+    and other words in the document to generate contextually rich data.
+    """
+    term = term.lower()
     sentences = text.split('.')
-    term_freq = [Counter(tokenize(sentence)) for sentence in sentences]
-    term_set = set(word for sentence in term_freq for word in sentence)
-    
-    # Calculate term frequency-inverse document frequency (TF-IDF)
-    tfidf_matrix = []
-    num_sentences = len(sentences)
-    
-    for tf in term_freq:
-        tfidf_vector = {}
-        for term in term_set:
-            tf_val = tf.get(term, 0)
-            idf_val = math.log((num_sentences + 1) / (sum(1 for tf_sentence in term_freq if term in tf_sentence) + 1))
-            tfidf_vector[term] = tf_val * idf_val
-        tfidf_matrix.append(tfidf_vector)
-    
-    return tfidf_matrix, term_set
-
-# 4. Cosine Similarity (Manual Implementation)
-def cosine_similarity(vec1, vec2):
-    # Dot product
-    dot_product = sum(vec1.get(term, 0) * vec2.get(term, 0) for term in vec1.keys())
-    
-    # Magnitudes (L2 norms)
-    magnitude1 = math.sqrt(sum(val ** 2 for val in vec1.values()))
-    magnitude2 = math.sqrt(sum(val ** 2 for val in vec2.values()))
-    
-    if magnitude1 == 0 or magnitude2 == 0:
-        return 0  # Prevent division by zero
-    
-    return dot_product / (magnitude1 * magnitude2)
-
-# 5. Calculate Similarity between Term and Sentences
-def calculate_similarity(text, term):
-    similarity_scores = []
-    tfidf_matrix, terms = compute_tfidf(text)
-    
-    # Compute TF-IDF vector for the input term
-    term_vec = Counter(tokenize(term))
-    term_tfidf = {}
-    for word in terms:
-        term_tfidf[word] = term_vec.get(word, 0) * math.log((len(tfidf_matrix) + 1) / (sum(1 for sentence in tfidf_matrix if word in sentence) + 1))
-    
-    # Calculate similarity score for each sentence
-    sentences = text.split('.')
-    for idx, tfidf_vector in enumerate(tfidf_matrix):
-        similarity = cosine_similarity(tfidf_vector, term_tfidf)
-        similarity_scores.append((idx, similarity, sentences[idx]))
-    
-    # Sort sentences by similarity score in descending order
-    similarity_scores.sort(key=lambda x: x[1], reverse=True)
-    
-    return similarity_scores
-
-# 6. Extract Contextual Relationships using Similarity Scoring
-def extract_contextual_relationships(text, term):
-    similarity_scores = calculate_similarity(text, term)
-    
     context_data = []
-    for idx, score, sentence in similarity_scores:
-        if score > 0.1:  # Only keep relevant sentences based on similarity threshold
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if term in sentence:
+            words = sentence.split()
+            relevant_words = [word for word in words if word not in ["the", "and", "is", "to", "in", "for", "on", "with", "as", "it", "at", "by", "that", "from", "this", "was", "were", "are", "be", "been", "being"]]
+            
+            # Look for related terms based on proximity in the sentence
+            related_terms = [word for word in relevant_words if word != term]
+            
             context_data.append({
-                "sentence": sentence.strip(),
-                "similarity_score": score
+                "sentence": sentence,
+                "related_terms": related_terms
             })
+    
+    # If no context found, look for single word occurrences
+    if not context_data and page_info:
+        for page_num, page_text in page_info.items():
+            if term in page_text:
+                context_data.append({
+                    "sentence": term,  # Single term mention
+                    "related_terms": [],  # No related terms for standalone mention
+                    "page_num": page_num
+                })
     
     return context_data
 
-# 7. Summarize Mentions of the User-Input Text
+# 5. Summarize Mentions of the User-Input Text
 def summarize_mentions(text, term):
+    """
+    Summarize all mentions of the user-input term in relation to the document.
+    """
     term = term.lower()
     sentences = text.split('.')
     summary_data = []
+
+    # Find all sentences that mention the term
     for sentence in sentences:
         sentence = sentence.strip()
         if term in sentence:
             summary_data.append(sentence)
     
+    # Return a concise summary of mentions
     if summary_data:
         return "\n".join(summary_data)
     else:
         return f"No mentions of '{term}' found in the document."
 
-# 8. Generate Dynamic Questions
+# Function to generate dynamic question prompts based on the extracted term
 def generate_dynamic_questions(text, term):
     term = term.lower()
+    
+    # Extract contextual relationships
     context_data = extract_contextual_relationships(text, term)
     
+    # Generate dynamic questions based on context
     questions = []
     if context_data:
         questions.append(f"What is mentioned about '{term}' in the document?")
         questions.append(f"Can you provide examples of '{term}' being discussed in the document?")
         
+        # Check for policy, rules, or definitions
         if any("requirement" in sentence.lower() for sentence in [entry['sentence'] for entry in context_data]):
             questions.append(f"What requirements or rules are associated with '{term}'?")
         
         if any("defined" in sentence.lower() for sentence in [entry['sentence'] for entry in context_data]):
             questions.append(f"How is '{term}' defined in the document?")
         
+        # Comparative questions if term appears in multiple contexts
         if len(context_data) > 1:
             questions.append(f"How does the discussion of '{term}' differ in various sections of the document?")
     
     return questions
 
-# 9. Generate Response to a Question
+# Function to generate contextual response to a question
 def generate_response_to_question(text, question, term):
     term = term.lower()
+    
+    # Extract contextual relationships
     context_data = extract_contextual_relationships(text, term)
     
+    # Identify question type and generate smart, context-aware responses
     if "about" in question or "what" in question.lower():
         if context_data:
             response = f"The document discusses '{term}' in various contexts: "
             for entry in context_data:
-                response += f"\n- In the sentence: '{entry['sentence']}', similarity score: {entry['similarity_score']:.2f}."
+                response += f"\n- In the sentence: '{entry['sentence']}', related terms are {', '.join(entry['related_terms'])}."
             return response
         else:
             return f"'{term}' is only briefly mentioned or not fully explored in the document."
@@ -164,35 +148,47 @@ def generate_response_to_question(text, question, term):
     else:
         return f"The document offers a detailed exploration of '{term}', providing insight into its significance in relation to other policy terms."
 
-# 10. Function to Extract Text from PDF
+# Function to extract text from PDF (including tables)
 def extract_text_from_pdf(pdf_file):
     pdf_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
     text = ""
     
+    # Iterate through each page
     for page_num in range(pdf_document.page_count):
         page = pdf_document.load_page(page_num)
+        
+        # Extract text using layout analysis (this helps to capture table-like structures)
         text += page.get_text("text")  # Standard text extraction
     
     return text
 
-# 11. Function to Print Full Lines with the Term (No Page Info)
-def print_full_lines_with_term(extracted_text, term):
+# Function to print full lines with the term (including page info)
+def print_full_lines_with_term(extracted_text, term, page_info):
     term = term.lower()
     full_lines_with_term = []
     
+    # Split the text into lines based on new lines
     lines = extracted_text.split('\n')
-    for idx, line in enumerate(lines):
+    for line in lines:
         if term in line.lower():
+            # Look up the page number based on the line's context
+            page_num = page_info.get(line.strip(), "Unknown page")
+            
+            # Ensure page_num is a string before concatenation
+            if isinstance(page_num, int):
+                page_num = str(page_num + 1)  # Convert page number to string and add 1 for 1-based indexing
+            
             full_line = line.replace(term, f"**_{term}_**")
-            full_lines_with_term.append(f"{idx + 1}. {full_line}")  # Ordered list: 1., 2., 3.
+            full_lines_with_term.append(f"Page {page_num}: {full_line}")  # Ensure page_num is properly formatted as a string
     
     return "\n".join(full_lines_with_term)
 
-# 12. Extract Related Terms
+# Function to extract related terms from the document
 def extract_related_terms(text, term):
     term = term.lower()
     related_terms = set()
     
+    # Split the text into words and extract any words related to the term
     words = text.split()
     for word in words:
         if term in word.lower() and word.lower() != term:
@@ -200,42 +196,54 @@ def extract_related_terms(text, term):
     
     return list(related_terms)
 
-# Main Streamlit App Interface
+# Main Streamlit app interface
 st.title("PDF Text Extractor and Contextual Analysis")
 st.write("Upload a PDF file to extract its text, clean it, and analyze content based on a custom term.")
 
+# File uploader widget
 uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
 if uploaded_file is not None:
     st.write(f"File: {uploaded_file.name}")
     
+    # Extract text from the uploaded PDF
     extracted_text = extract_text_from_pdf(uploaded_file)
 
+    # Clean the extracted text
     cleaned_text = clean_text(extracted_text)
 
+    # Input for custom term (e.g., "eligibility")
     custom_term = st.text_input("Enter a term to summarize references (e.g., 'eligibility')", "eligibility")
 
+    # Generate dynamic question prompts
     dynamic_questions = generate_dynamic_questions(cleaned_text, custom_term)
 
+    # Display dynamic questions
     st.subheader("Sample Questions Based on Your Text")
     for question in dynamic_questions:
         if st.button(question):
+            # Generate and display a response to the clicked question
             response = generate_response_to_question(extracted_text, question, custom_term)
             st.write(f"Response: {response}")
 
+    # Extract and display all contextual mentions of the custom term in the document
     context_data = extract_contextual_relationships(extracted_text, custom_term)
     st.subheader(f"Contextual Mentions of '{custom_term.capitalize()}'")
     
     if context_data:
         for entry in context_data:
-            st.write(f"Sentence: {entry['sentence']} - Similarity: {entry['similarity_score']:.2f}")
+            st.write(f"Sentence: {entry['sentence']}")
+            if entry['related_terms']:
+                st.write(f"Related Terms: {', '.join(entry['related_terms'])}")
     else:
         st.write(f"No mentions of '{custom_term}' found in the document.")
 
+    # Full lines containing the custom term
     st.subheader(f"Full Lines Containing '{custom_term.capitalize()}'")
-    full_lines = print_full_lines_with_term(extracted_text, custom_term)
+    full_lines = print_full_lines_with_term(extracted_text, custom_term, page_info={})  # Assuming `page_info` is provided
     st.write(full_lines)
 
+    # List of related terms
     related_terms = extract_related_terms(extracted_text, custom_term)
     st.subheader(f"Related Terms to '{custom_term.capitalize()}'")
     if related_terms:
