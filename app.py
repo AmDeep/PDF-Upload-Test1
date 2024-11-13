@@ -220,3 +220,7 @@ if uploaded_file is not None:
     st.subheader(f"Summary of Mentions of '{custom_term.capitalize()}'")
     summary = summarize_mentions(extracted_text, custom_term, page_info)
     st.write(summary)
+
+    # Show extracted raw text from the PDF
+    st.subheader("Extracted Text from Document")
+    st.write(extracted_text)  # This displays the raw extracted text
